@@ -72,13 +72,68 @@ const getBitPayPayment = async (
   return edgePaymentProtocolInfo
 }
 
+const getAnypayPayment = async (
+  paymentProtocolURL: string,
+  network: string,
+  fetch: any
+): Promise<EdgePaymentProtocolInfo> => {
+  const headers = {
+    Accept: 'application/json-payment-request',
+    'X-Currency': network
+  }
+  const result = await fetch(paymentProtocolURL, { headers })
+  if (parseInt(result.status) !== 200) {
+    const error = await result.text()
+    throw new Error(error)
+  }
+  const paymentRequest = await result.json()
+  const {
+    outputs,
+    memo,
+    paymentUrl,
+    paymentId,
+    requiredFeeRate,
+    currency
+  } = paymentRequest
+  const parsedOutputs = outputs.map(({ amount, address }) => {
+    const legacyAddress = toLegacyFormat(address, network)
+    return primitives.Output.fromOptions({
+      value: amount,
+      address: legacyAddress
+    })
+  })
+  const { nativeAmount, spendTargets } = getSpendTargets(
+    parsedOutputs,
+    network,
+    currency
+  )
+  const domain = parse(paymentUrl, {}).hostname
+  // $FlowFixMe
+  const edgePaymentProtocolInfo: EdgePaymentProtocolInfo = {
+    nativeAmount: `${nativeAmount}`,
+    merchant: { paymentId, requiredFeeRate },
+    memo,
+    domain,
+    spendTargets,
+    paymentUrl
+  }
+
+  return edgePaymentProtocolInfo
+}
+
 export async function getPaymentDetails(
   paymentProtocolURL: string,
   network: string,
   currencyCode: string,
   fetch: any
 ): Promise<EdgePaymentProtocolInfo> {
-  return getBitPayPayment(paymentProtocolURL, network, fetch)
+
+  if (paymentProtocolUrl.match("anypay=1")) {
+    return getAnypayPayment(paymentProtocolURL, network, fetch)
+  } else {
+    return getBitPayPayment(paymentProtocolURL, network, fetch)
+  }
+
 }
 
 export function createPayment(
